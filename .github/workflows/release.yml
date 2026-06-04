@@ -12,6 +12,9 @@ on:
 permissions:
   contents: write
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -40,6 +43,22 @@ jobs:
         run: |
           VSIX=$(ls *.vsix | head -n 1)
           echo "Releasing $VSIX"
+          cat > notes.md <<EOF
+          ## Inner Loop Code ${GITHUB_REF_NAME}
+
+          Local-first AI coding agent for VS Code, powered by Ollama.
+
+          ### Install
+          \`\`\`bash
+          code --install-extension $VSIX
+          \`\`\`
+
+          Requires VS Code and a local Ollama instance:
+          \`\`\`bash
+          ollama serve
+          ollama pull qwen3-coder
+          \`\`\`
+          EOF
           gh release create "${GITHUB_REF_NAME}" "$VSIX" \
             --title "Inner Loop Code ${GITHUB_REF_NAME}" \
-            --notes "Install locally:\n\n\`\`\`bash\ncode --install-extension $VSIX\n\`\`\`\n\nRequires VS Code and a local Ollama instance (\`ollama serve\` + \`ollama pull qwen3-coder\`)."
+            --notes-file notes.md

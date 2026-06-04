@@ -68,7 +68,7 @@ code --install-extension inner-loop-code-0.0.1.vsix
 
 ## Install From a Release
 
-Prebuilt `.vsix` files are attached to each [GitHub Release](../../releases).
+Prebuilt `.vsix` files are attached to each [GitHub Release](https://github.com/The-Inner-Loop/inner-loop-vscode/releases).
 Download the latest and install:
 
 ```bash
