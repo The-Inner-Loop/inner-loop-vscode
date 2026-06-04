@@ -66,6 +66,22 @@ vsce package
 code --install-extension inner-loop-code-0.0.1.vsix
 ```
 
+## Install From a Release
+
+Prebuilt `.vsix` files are attached to each [GitHub Release](../../releases).
+Download the latest and install:
+
+```bash
+code --install-extension inner-loop-code-<version>.vsix
+```
+
+Maintainers cut a release by tagging a version (CI builds and publishes the `.vsix`):
+
+```bash
+npm version patch    # bumps package.json + creates a git commit/tag
+npm run release      # pushes the tag → GitHub Actions builds & publishes
+```
+
 ## License
 
 MIT

@@ -104,7 +104,8 @@
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "package": "vsce package"
+    "package": "vsce package --allow-missing-repository",
+    "release": "git tag v$npm_package_version && git push origin v$npm_package_version"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
