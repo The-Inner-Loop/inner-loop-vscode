@@ -1,0 +1,115 @@
+{
+  "name": "inner-loop-code",
+  "displayName": "Inner Loop Code",
+  "description": "Local-first AI coding agent for VS Code powered by Ollama.",
+  "version": "0.0.1",
+  "publisher": "local",
+  "license": "MIT",
+  "private": true,
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other",
+    "Machine Learning"
+  ],
+  "keywords": [
+    "ai",
+    "ollama",
+    "local",
+    "agent",
+    "coding"
+  ],
+  "activationEvents": [],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      { "command": "innerLoop.ask", "title": "Inner Loop: Ask" },
+      { "command": "innerLoop.checkOllama", "title": "Inner Loop: Check Ollama" },
+      { "command": "innerLoop.explainCurrentFile", "title": "Inner Loop: Explain Current File" },
+      { "command": "innerLoop.explainSelection", "title": "Inner Loop: Explain Selection" },
+      { "command": "innerLoop.explainWorkspace", "title": "Inner Loop: Explain Workspace" },
+      { "command": "innerLoop.proposeEdit", "title": "Inner Loop: Propose Edit" },
+      { "command": "innerLoop.applyLastPatch", "title": "Inner Loop: Apply Last Patch" },
+      { "command": "innerLoop.rememberRule", "title": "Inner Loop: Remember Project Rule" },
+      { "command": "innerLoop.showMemory", "title": "Inner Loop: Show Memory" },
+      { "command": "innerLoop.runSafeTest", "title": "Inner Loop: Run Safe Test" }
+    ],
+    "configuration": {
+      "title": "Inner Loop Code",
+      "properties": {
+        "innerLoop.model": {
+          "type": "string",
+          "default": "qwen3-coder",
+          "description": "Ollama model used by Inner Loop Code."
+        },
+        "innerLoop.ollamaUrl": {
+          "type": "string",
+          "default": "http://localhost:11434",
+          "description": "Local Ollama server URL."
+        },
+        "innerLoop.maxAgentSteps": {
+          "type": "number",
+          "default": 12,
+          "description": "Maximum agent loop steps per task."
+        },
+        "innerLoop.autoApproveReads": {
+          "type": "boolean",
+          "default": true,
+          "description": "Allow Inner Loop to read non-secret workspace files without confirmation."
+        },
+        "innerLoop.autoApproveWrites": {
+          "type": "boolean",
+          "default": false,
+          "description": "Allow Inner Loop to apply file edits without confirmation."
+        },
+        "innerLoop.autoApproveCommands": {
+          "type": "boolean",
+          "default": false,
+          "description": "Allow Inner Loop to run allowlisted commands without confirmation."
+        },
+        "innerLoop.memoryEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable local project memory."
+        },
+        "innerLoop.defaultTestCommand": {
+          "type": "string",
+          "default": "",
+          "description": "Preferred test command for Run Safe Test (must be on the allowlist)."
+        },
+        "innerLoop.commandAllowlist": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [
+            "git status",
+            "git diff",
+            "npm test",
+            "npm run test",
+            "npm run build",
+            "npm run lint",
+            "pnpm test",
+            "pnpm build",
+            "yarn test",
+            "python -m pytest",
+            "pytest",
+            "go test ./..."
+          ],
+          "description": "Commands Inner Loop is allowed to run after approval."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^3.0.0",
+    "typescript": "^5.4.0"
+  }
+}

@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.vsix
+.vscode-test/
+.DS_Store
+
+# Dev scratch folder opened by F5 — keep the folder, ignore agent test churn
+test-workspace/*
+!test-workspace/.gitkeep

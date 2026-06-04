@@ -1,0 +1,12 @@
+.vscode/**
+.vscode-test/**
+src/**
+inner-loop-os/**
+test-workspace/**
+**/*.map
+**/*.ts
+tsconfig.json
+.gitignore
+.git/**
+node_modules/**
+!dist/**
