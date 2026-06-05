@@ -19,6 +19,8 @@ export interface MemoryRecord {
   content: string;
   source?: string;
   importance: number;
+  /** Optional embedding vector for semantic retrieval (Phase E). */
+  embedding?: number[];
   created_at: string;
   updated_at: string;
 }
@@ -60,6 +62,18 @@ export interface ToolResult {
 export interface ToolContext {
   workspaceRoot: string;
   workspaceHash: string;
+  /**
+   * Optional progress sink. Lets approval-gated tools surface an "awaiting
+   * approval" hint to live surfaces (e.g. the sidebar) before they block on a
+   * modal. Injected by the agent loop; undefined for non-loop callers.
+   */
+  onEvent?: (event: AgentToolEvent) => void;
+}
+
+/** A minimal event shape the tools can emit without importing the loop. */
+export interface AgentToolEvent {
+  kind: "notice";
+  text: string;
 }
 
 export interface Tool {

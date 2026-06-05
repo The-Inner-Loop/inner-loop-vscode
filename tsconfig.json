@@ -17,5 +17,5 @@
     "noUnusedParameters": false
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist", ".vscode-test"]
+  "exclude": ["node_modules", "dist", ".vscode-test", "src/test/**"]
 }

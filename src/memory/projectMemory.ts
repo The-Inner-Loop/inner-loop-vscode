@@ -11,6 +11,7 @@ export interface CreateMemoryInput {
   content: string;
   source?: string;
   importance?: number;
+  embedding?: number[];
 }
 
 export const ProjectMemory = {
@@ -23,6 +24,7 @@ export const ProjectMemory = {
       content: input.content.trim(),
       source: input.source,
       importance: input.importance ?? 1,
+      embedding: input.embedding,
       created_at: now,
       updated_at: now,
     };

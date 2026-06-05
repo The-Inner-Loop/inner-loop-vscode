@@ -6,6 +6,7 @@
 export const DEFAULTS = {
   model: "qwen3-coder",
   ollamaUrl: "http://localhost:11434",
+  embedModel: "nomic-embed-text",
   maxAgentSteps: 12,
   autoApproveReads: true,
   autoApproveWrites: false,

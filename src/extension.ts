@@ -4,6 +4,7 @@ import { Status } from "./ui/statusBar";
 import { Settings } from "./config/settings";
 import { ensureLayout } from "./memory/paths";
 import { OllamaClient } from "./model/ollamaClient";
+import { ChatViewProvider } from "./vscode/webview";
 import * as commands from "./vscode/commands";
 
 /**
@@ -41,6 +42,22 @@ export function activate(context: vscode.ExtensionContext): void {
   register("innerLoop.rememberRule", commands.rememberRule);
   register("innerLoop.showMemory", commands.showMemory);
   register("innerLoop.runSafeTest", commands.runSafeTest);
+
+  // Sidebar chat webview (Phase H).
+  const chatProvider = new ChatViewProvider(context.extensionUri, {
+    onPrompt: (prompt, reply) => commands.runChatPrompt(prompt, reply),
+    onClear: () => void commands.clearChatSession(),
+  });
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider(
+      ChatViewProvider.viewType,
+      chatProvider
+    )
+  );
+  register("innerLoop.openChat", async () => {
+    await vscode.commands.executeCommand("innerLoop.chatView.focus");
+    chatProvider.focusInput();
+  });
 
   context.subscriptions.push({ dispose: () => Status.dispose() });
   context.subscriptions.push({ dispose: () => Output.dispose() });

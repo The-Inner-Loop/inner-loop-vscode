@@ -19,6 +19,9 @@ export const Settings = {
   ollamaUrl(): string {
     return cfg().get<string>("ollamaUrl", DEFAULTS.ollamaUrl).replace(/\/+$/, "");
   },
+  embedModel(): string {
+    return cfg().get<string>("embedModel", DEFAULTS.embedModel);
+  },
   maxAgentSteps(): number {
     return cfg().get<number>("maxAgentSteps", DEFAULTS.maxAgentSteps);
   },

@@ -1,5 +1,5 @@
 import { AgentDecision } from "./types";
-import { ToolRegistry } from "../tools/registry";
+import { TOOL_NAME_SET } from "../tools/toolNames";
 
 /**
  * Robust parser for the model's JSON protocol (PRD 14).
@@ -68,7 +68,7 @@ export function parseDecision(modelText: string): ParseResult {
   }
   try {
     const obj = JSON.parse(block) as Record<string, unknown>;
-    const knownTools = new Set(ToolRegistry.all().map((t) => t.name));
+    const knownTools = TOOL_NAME_SET;
 
     // Resolve the intended tool name across common model deviations:
     //  - {"action":"tool","tool":"x"}        (canonical)

@@ -3,9 +3,13 @@ import { OllamaClient } from "../model/ollamaClient";
 import { ToolRegistry } from "../tools/registry";
 import { parseDecision } from "./planner";
 import { systemPrompt } from "./prompts";
-import { Retrieval } from "../memory/retrieval";
+import { MemoryService } from "../memory/memoryService";
+import { SessionMemory } from "../memory/sessionMemory";
 import { Settings } from "../config/settings";
 import { Output } from "../ui/output";
+import { AgentEvent } from "./activity";
+
+export { AgentEvent } from "./activity";
 
 /**
  * The agent tool loop (PRD 14 / 7). Bounded by innerLoop.maxAgentSteps.
@@ -21,23 +25,51 @@ export interface AgentRunResult {
 export async function runAgent(
   client: OllamaClient,
   task: string,
-  ctx: ToolContext
+  ctx: ToolContext,
+  signal?: AbortSignal,
+  onEvent?: (event: AgentEvent) => void
 ): Promise<AgentRunResult> {
   const model = Settings.model();
   const maxSteps = Settings.maxAgentSteps();
 
+  // Let approval-gated tools surface "awaiting approval" hints to live surfaces.
+  const toolCtx: ToolContext = {
+    ...ctx,
+    onEvent: (e) => onEvent?.({ kind: "notice", text: e.text }),
+  };
+
   const memoryBlock = Settings.memoryEnabled()
-    ? Retrieval.asPromptBlock(Retrieval.relevant(ctx.workspaceHash, task))
+    ? await MemoryService.recallBlock(ctx.workspaceHash, task)
     : "";
 
+  // Bring prior conversation turns into context for continuity.
+  const recap = SessionMemory.recap(ctx.workspaceHash);
+  const systemContent = recap
+    ? `${systemPrompt(ctx.workspaceRoot, memoryBlock)}\n\n${recap}`
+    : systemPrompt(ctx.workspaceRoot, memoryBlock);
+
   const messages: ChatMessage[] = [
-    { role: "system", content: systemPrompt(ctx.workspaceRoot, memoryBlock) },
+    { role: "system", content: systemContent },
     { role: "user", content: task },
   ];
 
+  // Record the user's turn for future continuity.
+  SessionMemory.append(ctx.workspaceHash, { role: "user", content: task });
+
   let corrections = 0;
   for (let step = 1; step <= maxSteps; step++) {
-    const raw = await client.chat({ model, messages, json: true });
+    if (signal?.aborted) {
+      return {
+        final: {
+          action: "final",
+          summary: "Cancelled by user.",
+          changes: [],
+          next_steps: [],
+        },
+        steps: step,
+      };
+    }
+    const raw = await client.chat({ model, messages, json: true, signal });
     const { decision, fallbackText } = parseDecision(raw);
 
     if (!decision) {
@@ -48,6 +80,7 @@ export async function runAgent(
       if (looksLikeJson && corrections < 2) {
         corrections++;
         Output.info(`step ${step}: malformed tool call — re-prompting (${corrections}/2).`);
+        onEvent?.({ kind: "notice", text: "Re-checking my response format…" });
         messages.push({ role: "assistant", content: text });
         messages.push({
           role: "user",
@@ -59,6 +92,7 @@ export async function runAgent(
         continue;
       }
       // Genuine prose — accept it as the final answer.
+      SessionMemory.append(ctx.workspaceHash, { role: "assistant", content: text });
       return {
         final: { action: "final", summary: text, changes: [], next_steps: [] },
         steps: step,
@@ -66,22 +100,29 @@ export async function runAgent(
     }
 
     if (decision.action === "final") {
+      SessionMemory.append(ctx.workspaceHash, {
+        role: "assistant",
+        content: decision.summary,
+      });
       return { final: decision, steps: step };
     }
 
     // Tool call.
     const tool = ToolRegistry.get(decision.tool);
     Output.info(`step ${step}: tool ${decision.tool}${decision.reason ? ` — ${decision.reason}` : ""}`);
+    onEvent?.({ kind: "tool", step, tool: decision.tool, reason: decision.reason });
 
     let resultContent: string;
     if (!tool) {
       resultContent = `Unknown tool: ${decision.tool}`;
     } else {
       try {
-        const result = await tool.run(decision.args, ctx);
+        const result = await tool.run(decision.args, toolCtx);
         resultContent = result.content;
+        onEvent?.({ kind: "tool_result", step, tool: decision.tool, ok: result.ok });
       } catch (e) {
         resultContent = `Tool error: ${(e as Error).message}`;
+        onEvent?.({ kind: "tool_result", step, tool: decision.tool, ok: false });
       }
     }
 

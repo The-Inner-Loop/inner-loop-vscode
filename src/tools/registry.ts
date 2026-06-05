@@ -4,6 +4,7 @@ import { getActiveFile, getSelection } from "../vscode/editor";
 import { readDiagnostics } from "../vscode/diagnostics";
 import { Retrieval } from "../memory/retrieval";
 import { ProjectMemory } from "../memory/projectMemory";
+import { MemoryService } from "../memory/memoryService";
 import { MemoryType } from "../agent/types";
 import { Git } from "./git";
 import * as path from "path";
@@ -174,10 +175,22 @@ const tools: Tool[] = [
       await showDiff(patch);
 
       if (!Settings.autoApproveWrites()) {
-        const choice = await requestApproval(
-          `Inner Loop wants to write ${path.basename(p)}. Apply?`,
+        ctx.onEvent?.({
+          kind: "notice",
+          text: `Awaiting your approval to write ${path.basename(p)} (see the dialog / diff).`,
+        });
+        let choice = await requestApproval(
+          `Inner Loop wants to write ${path.basename(p)}. Review the diff, then Apply.`,
           { approveLabel: "Apply Patch", detailsLabel: "Open Diff" }
         );
+        // "Open Diff" should re-focus the diff for review, not decline the edit.
+        while (choice === "details") {
+          await showDiff(patch);
+          choice = await requestApproval(
+            `Inner Loop wants to write ${path.basename(p)}. Review the diff, then Apply.`,
+            { approveLabel: "Apply Patch", detailsLabel: "Open Diff" }
+          );
+        }
         if (choice !== "approve") {
           return fail(`User declined the edit to ${p}.`);
         }
@@ -213,6 +226,10 @@ const tools: Tool[] = [
         );
       }
       if (!Settings.autoApproveCommands()) {
+        ctx.onEvent?.({
+          kind: "notice",
+          text: `Awaiting your approval to run "${command}" (see the dialog).`,
+        });
         const choice = await requestApproval(`Run "${command}"?`, {
           approveLabel: "Run Command",
         });
@@ -231,7 +248,7 @@ const tools: Tool[] = [
     mutating: false,
     async run(args, ctx) {
       const q = str(args, "query");
-      const records = Retrieval.relevant(ctx.workspaceHash, q);
+      const records = await MemoryService.recall(ctx.workspaceHash, q);
       return ok(Retrieval.asPromptBlock(records) || "No relevant memory.");
     },
   },
@@ -246,7 +263,7 @@ const tools: Tool[] = [
         return fail("Missing 'content' argument.");
       }
       const type = (str(args, "type") || "rule") as MemoryType;
-      const rec = ProjectMemory.create({
+      const rec = await MemoryService.remember({
         workspaceHash: ctx.workspaceHash,
         type,
         content,

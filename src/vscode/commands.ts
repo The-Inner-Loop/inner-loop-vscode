@@ -11,9 +11,12 @@ import { listFiles, readWorkspaceFile } from "./files";
 import { showDiff, applyPatch, ProposedPatch } from "./diff";
 import { runCommand } from "./terminal";
 import { runAgent } from "../agent/loop";
+import { formatAgentEvent } from "../agent/activity";
 import { explainPrompt, editPrompt } from "../agent/prompts";
 import { ProjectMemory } from "../memory/projectMemory";
 import { Retrieval } from "../memory/retrieval";
+import { MemoryService } from "../memory/memoryService";
+import { SessionMemory } from "../memory/sessionMemory";
 import { MemoryType } from "../agent/types";
 import { checkCommand, safeAlternative } from "../safety/commandPolicy";
 import { isProtected } from "../safety/filePolicy";
@@ -26,6 +29,28 @@ import { requestApproval } from "../safety/approval";
 
 function client(): OllamaClient {
   return new OllamaClient(Settings.ollamaUrl());
+}
+
+/**
+ * Run work under a cancellable VS Code progress notification. The provided
+ * AbortSignal fires when the user clicks Cancel — callers pass it to the model.
+ */
+function withProgress<T>(
+  title: string,
+  work: (signal: AbortSignal) => Promise<T>
+): Thenable<T> {
+  return vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Notification,
+      title,
+      cancellable: true,
+    },
+    async (_progress, token) => {
+      const controller = new AbortController();
+      token.onCancellationRequested(() => controller.abort());
+      return work(controller.signal);
+    }
+  );
 }
 
 /** Shared guard: ensure Ollama is up and the model is present. */
@@ -48,11 +73,11 @@ async function ensureReady(): Promise<OllamaClient | undefined> {
   return c;
 }
 
-function memoryBlockFor(workspaceHash: string, query: string): string {
+async function memoryBlockFor(workspaceHash: string, query: string): Promise<string> {
   if (!Settings.memoryEnabled()) {
     return "";
   }
-  return Retrieval.asPromptBlock(Retrieval.relevant(workspaceHash, query));
+  return MemoryService.recallBlock(workspaceHash, query);
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -122,10 +147,14 @@ export async function ask(): Promise<void> {
   Status.set("Thinking");
 
   try {
-    const result = await runAgent(c, prompt, {
-      workspaceRoot: ws.root,
-      workspaceHash: ws.hash,
-    });
+    const result = await withProgress("Inner Loop: thinking…", (signal) =>
+      runAgent(
+        c,
+        prompt,
+        { workspaceRoot: ws.root, workspaceHash: ws.hash },
+        signal
+      )
+    );
     Output.header("Result");
     Output.line(result.final.summary);
     if (result.final.changes?.length) {
@@ -145,9 +174,54 @@ export async function ask(): Promise<void> {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────
-// Explain commands (one-shot, no tool loop)
-// ─────────────────────────────────────────────────────────────────────────
+/**
+ * Chat bridge for the sidebar webview. Runs the agent for a prompt and returns
+ * the final summary; live tool activity streams into the panel as it happens.
+ */
+export async function runChatPrompt(
+  prompt: string,
+  reply: (chunk: string) => void
+): Promise<{ summary: string }> {
+  const ws = await resolveWorkspace();
+  if (!ws) {
+    return { summary: "Open a folder/workspace first." };
+  }
+  const c = await ensureReady();
+  if (!c) {
+    return { summary: "Ollama is not reachable. Run 'Inner Loop: Check Ollama'." };
+  }
+
+  Status.set("Thinking");
+  try {
+    const result = await withProgress("Inner Loop: thinking…", (signal) =>
+      runAgent(
+        c,
+        prompt,
+        { workspaceRoot: ws.root, workspaceHash: ws.hash },
+        signal,
+        (event) => reply(formatAgentEvent(event))
+      )
+    );
+    let summary = result.final.summary;
+    if (result.final.changes?.length) {
+      summary += "\n\nChanges:\n" + result.final.changes.map((c2) => `• ${c2}`).join("\n");
+    }
+    if (result.final.next_steps?.length) {
+      summary += "\n\nNext steps:\n" + result.final.next_steps.map((s) => `• ${s}`).join("\n");
+    }
+    return { summary };
+  } finally {
+    Status.set("Ready");
+  }
+}
+
+/** Clear the conversational session for the active workspace. */
+export async function clearChatSession(): Promise<void> {
+  const ws = await resolveWorkspace();
+  if (ws) {
+    SessionMemory.clear(ws.hash);
+  }
+}
 async function explainOneShot(
   system: string,
   user: string,
@@ -163,15 +237,18 @@ async function explainOneShot(
   Status.set("Thinking");
   try {
     Output.line("");
-    const answer = await c.chatStream(
-      {
-        model: Settings.model(),
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: user },
-        ],
-      },
-      (chunk) => Output.append(chunk)
+    const answer = await withProgress(`Inner Loop: ${title}…`, (signal) =>
+      c.chatStream(
+        {
+          model: Settings.model(),
+          messages: [
+            { role: "system", content: system },
+            { role: "user", content: user },
+          ],
+          signal,
+        },
+        (chunk) => Output.append(chunk)
+      )
     );
     if (!answer.trim()) {
       Output.line("(empty response)");
@@ -205,7 +282,7 @@ export async function explainCurrentFile(): Promise<void> {
     path: path.relative(ws.root, f.path),
     language: f.languageId,
     body: f.text,
-    memoryBlock: memoryBlockFor(ws.hash, f.text.slice(0, 400)),
+    memoryBlock: await memoryBlockFor(ws.hash, f.text.slice(0, 400)),
   });
   await explainOneShot(system, user, "Explain Current File");
 }
@@ -225,7 +302,7 @@ export async function explainSelection(): Promise<void> {
     path: path.relative(ws.root, s.path),
     language: s.languageId,
     body: s.selectedText,
-    memoryBlock: memoryBlockFor(ws.hash, s.selectedText.slice(0, 400)),
+    memoryBlock: await memoryBlockFor(ws.hash, s.selectedText.slice(0, 400)),
   });
   await explainOneShot(system, user, "Explain Selection");
 }
@@ -278,25 +355,28 @@ export async function explainWorkspace(): Promise<void> {
     const { system, user } = explainPrompt({
       kind: "workspace",
       body,
-      memoryBlock: memoryBlockFor(ws.hash, "architecture"),
+      memoryBlock: await memoryBlockFor(ws.hash, "architecture"),
     });
 
     Output.line("");
-    const answer = await c.chatStream(
-      {
-        model: Settings.model(),
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: user },
-        ],
-      },
-      (chunk) => Output.append(chunk)
+    const answer = await withProgress("Inner Loop: Explain Workspace…", (signal) =>
+      c.chatStream(
+        {
+          model: Settings.model(),
+          messages: [
+            { role: "system", content: system },
+            { role: "user", content: user },
+          ],
+          signal,
+        },
+        (chunk) => Output.append(chunk)
+      )
     );
     Output.line("");
 
     // Store the architecture summary in memory (PRD 10.5).
     if (Settings.memoryEnabled() && answer.trim()) {
-      ProjectMemory.create({
+      await MemoryService.remember({
         workspaceHash: ws.hash,
         type: "architecture",
         content: answer.trim().slice(0, 2000),
@@ -336,7 +416,7 @@ export async function rememberRule(): Promise<void> {
   );
   const type = (typePick ?? "rule") as MemoryType;
 
-  const rec = ProjectMemory.create({
+  const rec = await MemoryService.remember({
     workspaceHash: ws.hash,
     type,
     content,
@@ -372,6 +452,16 @@ export async function showMemory(): Promise<void> {
 // Propose / Apply edit (PRD 10.3 / 10.4 / 15)
 // ─────────────────────────────────────────────────────────────────────────
 let lastPatch: ProposedPatch | undefined;
+
+/** Track pending-patch state for the `innerLoop.hasPendingPatch` menu context. */
+function setPendingPatch(patch: ProposedPatch | undefined): void {
+  lastPatch = patch;
+  void vscode.commands.executeCommand(
+    "setContext",
+    "innerLoop.hasPendingPatch",
+    patch !== undefined
+  );
+}
 
 export async function proposeEdit(): Promise<void> {
   const ws = await resolveWorkspace();
@@ -416,17 +506,20 @@ export async function proposeEdit(): Promise<void> {
       language: f.languageId,
       original: f.text,
       instruction,
-      memoryBlock: memoryBlockFor(ws.hash, instruction),
+      memoryBlock: await memoryBlockFor(ws.hash, instruction),
       relatedContext: sel ? `Focus on lines ${sel.startLine}-${sel.endLine}.` : undefined,
     });
 
-    const proposed = await c.chat({
-      model: Settings.model(),
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: user },
-      ],
-    });
+    const proposed = await withProgress("Inner Loop: drafting edit…", (signal) =>
+      c.chat({
+        model: Settings.model(),
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: user },
+        ],
+        signal,
+      })
+    );
 
     const proposedText = stripFences(proposed);
     if (!proposedText.trim() || proposedText.trim() === f.text.trim()) {
@@ -435,14 +528,15 @@ export async function proposeEdit(): Promise<void> {
       return;
     }
 
-    lastPatch = {
+    const patch: ProposedPatch = {
       targetPath: f.path,
       originalText: f.text,
       proposedText,
       description: instruction,
     };
+    setPendingPatch(patch);
 
-    await showDiff(lastPatch);
+    await showDiff(patch);
     Status.set("Patch Ready");
     Output.info("Diff opened. Review, then approve to apply.");
 
@@ -452,9 +546,9 @@ export async function proposeEdit(): Promise<void> {
     );
 
     if (choice === "approve") {
-      await doApply(lastPatch, ws.hash);
+      await doApply(patch, ws.hash);
     } else if (choice === "details") {
-      await showDiff(lastPatch);
+      await showDiff(patch);
       Output.info("Run 'Inner Loop: Apply Last Patch' when ready.");
     } else {
       Output.info("Edit cancelled. Patch retained for 'Apply Last Patch'.");
@@ -475,17 +569,18 @@ export async function applyLastPatch(): Promise<void> {
   if (!ws) {
     return;
   }
-  if (!lastPatch) {
+  const patch = lastPatch;
+  if (!patch) {
     Notify.warn("Inner Loop: no pending patch. Run 'Propose Edit' first.");
     return;
   }
   if (!Settings.autoApproveWrites()) {
     const choice = await requestApproval(
-      `Apply pending patch to ${path.basename(lastPatch.targetPath)}?`,
+      `Apply pending patch to ${path.basename(patch.targetPath)}?`,
       { approveLabel: "Apply Patch", detailsLabel: "Open Diff" }
     );
     if (choice === "details") {
-      await showDiff(lastPatch);
+      await showDiff(patch);
       return;
     }
     if (choice !== "approve") {
@@ -493,7 +588,7 @@ export async function applyLastPatch(): Promise<void> {
       return;
     }
   }
-  await doApply(lastPatch, ws.hash);
+  await doApply(patch, ws.hash);
 }
 
 async function doApply(patch: ProposedPatch, workspaceHash: string): Promise<void> {
@@ -511,7 +606,7 @@ async function doApply(patch: ProposedPatch, workspaceHash: string): Promise<voi
         source: "applyPatch",
       });
     }
-    lastPatch = undefined;
+    setPendingPatch(undefined);
     Status.set("Ready");
   } else {
     Output.error("Failed to apply patch.");

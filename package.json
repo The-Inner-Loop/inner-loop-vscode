@@ -2,10 +2,15 @@
   "name": "inner-loop-code",
   "displayName": "Inner Loop Code",
   "description": "Local-first AI coding agent for VS Code powered by Ollama.",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "publisher": "local",
   "license": "MIT",
   "private": true,
+  "icon": "media/icon.png",
+  "galleryBanner": {
+    "color": "#0d1117",
+    "theme": "dark"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/The-Inner-Loop/inner-loop-vscode.git"
@@ -31,17 +36,79 @@
   "activationEvents": [],
   "main": "./dist/extension.js",
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "innerLoop",
+          "title": "Inner Loop",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "innerLoop": [
+        {
+          "id": "innerLoop.chatView",
+          "name": "Chat",
+          "type": "webview",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
     "commands": [
-      { "command": "innerLoop.ask", "title": "Inner Loop: Ask" },
-      { "command": "innerLoop.checkOllama", "title": "Inner Loop: Check Ollama" },
-      { "command": "innerLoop.explainCurrentFile", "title": "Inner Loop: Explain Current File" },
-      { "command": "innerLoop.explainSelection", "title": "Inner Loop: Explain Selection" },
-      { "command": "innerLoop.explainWorkspace", "title": "Inner Loop: Explain Workspace" },
-      { "command": "innerLoop.proposeEdit", "title": "Inner Loop: Propose Edit" },
-      { "command": "innerLoop.applyLastPatch", "title": "Inner Loop: Apply Last Patch" },
-      { "command": "innerLoop.rememberRule", "title": "Inner Loop: Remember Project Rule" },
-      { "command": "innerLoop.showMemory", "title": "Inner Loop: Show Memory" },
-      { "command": "innerLoop.runSafeTest", "title": "Inner Loop: Run Safe Test" }
+      { "command": "innerLoop.ask", "title": "Ask", "category": "Inner Loop" },
+      { "command": "innerLoop.openChat", "title": "Open Chat", "category": "Inner Loop" },
+      { "command": "innerLoop.checkOllama", "title": "Check Ollama", "category": "Inner Loop" },
+      { "command": "innerLoop.explainCurrentFile", "title": "Explain Current File", "category": "Inner Loop" },
+      { "command": "innerLoop.explainSelection", "title": "Explain Selection", "category": "Inner Loop" },
+      { "command": "innerLoop.explainWorkspace", "title": "Explain Workspace", "category": "Inner Loop" },
+      { "command": "innerLoop.proposeEdit", "title": "Propose Edit", "category": "Inner Loop" },
+      { "command": "innerLoop.applyLastPatch", "title": "Apply Last Patch", "category": "Inner Loop" },
+      { "command": "innerLoop.rememberRule", "title": "Remember Project Rule", "category": "Inner Loop" },
+      { "command": "innerLoop.showMemory", "title": "Show Memory", "category": "Inner Loop" },
+      { "command": "innerLoop.runSafeTest", "title": "Run Safe Test", "category": "Inner Loop" }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "innerLoop.explainSelection",
+          "when": "editorHasSelection",
+          "group": "innerLoop@1"
+        },
+        {
+          "command": "innerLoop.explainCurrentFile",
+          "when": "editorTextFocus",
+          "group": "innerLoop@2"
+        },
+        {
+          "command": "innerLoop.proposeEdit",
+          "when": "editorTextFocus",
+          "group": "innerLoop@3"
+        }
+      ],
+      "commandPalette": [
+        { "command": "innerLoop.explainSelection", "when": "editorHasSelection" },
+        { "command": "innerLoop.applyLastPatch", "when": "innerLoop.hasPendingPatch" }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "innerLoop.ask",
+        "key": "ctrl+alt+i",
+        "mac": "cmd+alt+i"
+      },
+      {
+        "command": "innerLoop.explainSelection",
+        "key": "ctrl+alt+e",
+        "mac": "cmd+alt+e",
+        "when": "editorHasSelection"
+      },
+      {
+        "command": "innerLoop.proposeEdit",
+        "key": "ctrl+alt+p",
+        "mac": "cmd+alt+p",
+        "when": "editorTextFocus"
+      }
     ],
     "configuration": {
       "title": "Inner Loop Code",
@@ -55,6 +122,11 @@
           "type": "string",
           "default": "http://localhost:11434",
           "description": "Local Ollama server URL."
+        },
+        "innerLoop.embedModel": {
+          "type": "string",
+          "default": "nomic-embed-text",
+          "description": "Local Ollama model used for semantic memory embeddings."
         },
         "innerLoop.maxAgentSteps": {
           "type": "number",
@@ -112,6 +184,8 @@
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
+    "pretest": "tsc -p ./tsconfig.test.json",
+    "test": "node --test \"out-test/test/unit/*.test.js\"",
     "package": "vsce package --allow-missing-repository",
     "release": "git tag v$npm_package_version && git push origin v$npm_package_version"
   },
