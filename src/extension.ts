@@ -51,7 +51,8 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(
       ChatViewProvider.viewType,
-      chatProvider
+      chatProvider,
+      { webviewOptions: { retainContextWhenHidden: true } }
     )
   );
   register("innerLoop.openChat", async () => {

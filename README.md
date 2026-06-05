@@ -82,8 +82,11 @@ The same local agent answers your questions and can read files, search the code,
 and propose edits — all gated by the safety model. While it works, the panel
 streams a **live activity trail** (e.g. _Reading a file → Searching the code →
 Proposing an edit_) that collapses into an expandable summary once the final
-answer arrives. Click the trail header to expand or collapse the steps. Use
-**Clear** to reset the conversation for the current workspace.
+answer arrives. Click the trail header to expand or collapse the steps.
+
+Your conversation **persists** when you switch away from the view or reload the
+window — it stays put until you press **Clear** to reset it for the current
+workspace.
 
 ## Approving Edits & Commands
 

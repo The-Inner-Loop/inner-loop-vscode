@@ -159,11 +159,21 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   let activityEl = null;   // live "thinking" trail for the current turn
   let stepCount = 0;
 
+  // Persisted transcript of completed turns. Survives view hide AND full
+  // reloads so the conversation stays put until the user clears it.
+  let history = (vscode.getState() && vscode.getState().history) || [];
+  function persist() { vscode.setState({ history: history }); }
+  function record(cls, who, text) {
+    history.push({ cls: cls, who: who, text: text });
+    persist();
+  }
+
   function clearHint() { if (hint) { hint.remove(); } }
 
   function scrollToEnd() { log.scrollTop = log.scrollHeight; }
 
-  function addMsg(cls, who, text) {
+  // Render a message bubble. Pass remember=true to also persist it.
+  function addMsg(cls, who, text, remember) {
     clearHint();
     const div = document.createElement('div');
     div.className = 'msg ' + cls;
@@ -173,6 +183,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     div.appendChild(document.createTextNode(text || ''));
     log.appendChild(div);
     scrollToEnd();
+    if (remember) { record(cls, who, text); }
     return div;
   }
 
@@ -236,18 +247,28 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   window.addEventListener('message', (event) => {
     const msg = event.data;
     switch (msg.type) {
-      case 'userEcho': activityEl = null; addMsg('user', 'You', msg.text); break;
+      case 'userEcho': activityEl = null; addMsg('user', 'You', msg.text, true); break;
       case 'activity': if (msg.text && msg.text.trim()) addActivity(msg.text); break;
       case 'done':
         settleActivity();
-        addMsg('agent', 'Inner Loop', msg.text);
+        addMsg('agent', 'Inner Loop', msg.text, true);
         break;
-      case 'error': settleActivity(); addMsg('error', 'Error', msg.text); break;
+      case 'error': settleActivity(); addMsg('error', 'Error', msg.text, true); break;
       case 'busy': send.disabled = msg.value; input.disabled = msg.value; break;
-      case 'cleared': log.innerHTML = ''; activityEl = null; break;
+      case 'cleared': history = []; persist(); log.innerHTML = ''; activityEl = null; break;
       case 'focus': input.focus(); break;
     }
   });
+
+  // Restore any persisted conversation (after a hide/reload).
+  function restore() {
+    if (!history.length) { return; }
+    clearHint();
+    for (const m of history) { addMsg(m.cls, m.who, m.text, false); }
+    scrollToEnd();
+  }
+
+  restore();
   input.focus();
 </script>
 </body>

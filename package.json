@@ -185,7 +185,7 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "pretest": "tsc -p ./tsconfig.test.json",
-    "test": "node --test \"out-test/test/unit/*.test.js\"",
+    "test": "node --test out-test/test/unit/*.test.js",
     "package": "vsce package --allow-missing-repository",
     "release": "git tag v$npm_package_version && git push origin v$npm_package_version"
   },

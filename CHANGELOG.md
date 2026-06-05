@@ -23,6 +23,14 @@ This project follows [Semantic Versioning](https://semver.org/).
 - **Patch could be silently declined.** Choosing **Open Diff** at the approval
   dialog returned a non-approve result and cancelled the edit. It now re-opens
   the diff and asks again, so reviewing no longer discards the proposal.
+- **Sidebar chat no longer clears on blur.** The conversation now persists when
+  the view is hidden or the window reloads (via `retainContextWhenHidden` plus
+  webview state), staying put until you press **Clear**.
+- **CI/release builds were failing.** The test script used a quoted glob that
+  only Node 21+ expands natively; on the pinned Node 20 runner it matched no
+  files. The glob is now shell-expanded and the workflows run on Node 22 LTS
+  (clearing the Node 20 deprecation warning). The release workflow also runs
+  the tests before packaging.
 
 ### Changed
 
